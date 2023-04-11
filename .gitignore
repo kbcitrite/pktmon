@@ -1,0 +1,14 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/bin/Debug/net6.0-windows
+/obj/Debug
+/bin/Release/net6.0-windows/ref
+/bin/Release/net6.0-windows/PktMon.etl
+/bin/Release/net6.0-windows/PacketCapture.pdb
+/bin/Release/net6.0-windows/PacketCapture.runtimeconfig.json
+/bin/Release/net6.0-windows/System.Management.Automation.dll
+/obj
+/bin/Release/net6.0-windows/PacketCapture.deps.json
