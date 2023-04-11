@@ -16,16 +16,17 @@
             <Button Name="StartButton" Content="Start" Width="50" Click="StartButton_Click" Margin="1"/>
             <Button Name="StopButton" Content="Stop" Width="50" Click="StopButton_Click" Margin="1"/>
             <Label Name="InfoFilterLabel" Content="Search Info for:" VerticalAlignment="Center"/>
-            <TextBox Name="FilterTextBox" Width="100" Margin="1" TextChanged="FilterTextBox_TextChanged"/>
+            <TextBox Name="FilterTextBox" Width="100" Margin="1" TextChanged="FilterTextBox_TextChanged"/>            
+            <CheckBox Name="AutoScrollCheckBox" Content="Auto Scroll" Margin="10 0 0 0" VerticalAlignment="Center" IsChecked="{Binding IsAutoScrollEnabled}" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Margin="1" Grid.Row="1">
             <Label Content="Ports:" VerticalAlignment="Center" />
-            <TextBox Name="PortTextBox" Width="30" Margin="1" />
+            <TextBox Name="PortTextBox" Width="30" Margin="1" VerticalContentAlignment="Center" />
             <Button Name="AddPortButton" Content="Add" Click="AddPortButton_Click" Margin="1" Width="45" />
             <Button Name="RemovePortButton" Content="Remove" Click="RemovePortButton_Click" Margin="1" Width="57" />
             <ListBox Name="FilterPorts" Width="60" Margin="1" MaxHeight="200" Height="25" />
             <Label Content="IPs:" VerticalAlignment="Center" />
-            <TextBox Name="IPTextBox" Width="100" Margin="1" />
+            <TextBox Name="IPTextBox" Width="100" Margin="1" VerticalContentAlignment="Center" />
             <Button Name="AddIpButton" Content="Add" Click="AddIpButton_Click" Margin="1" Width="45" />
             <Button Name="RemoveIpButton" Content="Remove" Click="RemoveIpButton_Click" Margin="1" Width="67" />
             <ListBox Name="FilterIPs" Width="158" Margin="1" MaxHeight="200" Height="25" />

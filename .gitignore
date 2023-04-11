@@ -12,3 +12,5 @@
 /bin/Release/net6.0-windows/System.Management.Automation.dll
 /obj
 /bin/Release/net6.0-windows/PacketCapture.deps.json
+/bin/Release/net6.0-windows/win-x64
+*.binlog

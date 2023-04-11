@@ -13,6 +13,8 @@ using System.Windows.Data;
 using System.Text;
 using Microsoft.Win32;
 using System.Linq;
+using System.Windows.Media;
+using System.Windows.Controls;
 
 namespace PacketCapture
 {
@@ -37,9 +39,16 @@ namespace PacketCapture
         private Process _pktMonStopProcess;
         private readonly DispatcherTimer _updateTimer;
         private bool _processExited = false;
+        private readonly System.Timers.Timer _scrollTimer = new System.Timers.Timer(1000);
+        private bool _scrollReady = true;
         public MainWindow()
         {
             InitializeComponent();
+            _scrollTimer.Elapsed += (s, e) =>
+            {
+                _scrollReady = true;
+                _scrollTimer.Stop();
+            };
             ToggleTheme();
             _outputData = new ObservableCollection<OutputData>();
             OutputDataGrid.ItemsSource = _outputData;
@@ -93,20 +102,20 @@ namespace PacketCapture
 
         private void StartCapture()
         {
+            StopCapture();
             var clearFilterProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
                     Arguments = "/C pktmon filter remove",
-                    RedirectStandardOutput = true,
-                    RedirectStandardInput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
             clearFilterProcess.Start();
             clearFilterProcess.WaitForExit();
+            clearFilterProcess.Dispose();
             if (FilterPorts.Items.Count > 0)
             {
                 // Add port filters
@@ -118,19 +127,18 @@ namespace PacketCapture
                         {
                             FileName = "cmd.exe",
                             Arguments = $"/C pktmon filter add -p {port}",
-                            RedirectStandardOutput = true,
-                            RedirectStandardInput = true,
                             UseShellExecute = false,
                             CreateNoWindow = true
                         }
                     };
                     addFilterProcess.Start();
                     addFilterProcess.WaitForExit();
+                    addFilterProcess.Dispose();
                 }
             }
             if (FilterIPs.Items.Count > 0)
             {
-                // Add port filters
+                // Add IP filters
                 foreach (string IP in FilterIPs.Items)
                 {
                     var addFilterProcess = new Process
@@ -139,14 +147,13 @@ namespace PacketCapture
                         {
                             FileName = "cmd.exe",
                             Arguments = $"/C pktmon filter add -i {IP}",
-                            RedirectStandardOutput = true,
-                            RedirectStandardInput = true,
                             UseShellExecute = false,
                             CreateNoWindow = true
                         }
                     };
                     addFilterProcess.Start();
                     addFilterProcess.WaitForExit();
+                    addFilterProcess.Dispose();
                 }
             }
             // Clear output data and start packet capture
@@ -163,7 +170,6 @@ namespace PacketCapture
                     CreateNoWindow = true
                 }
             };
-
             _pktMonProcess.OutputDataReceived += PktMonProcess_OutputDataReceived;
             _pktMonProcess.Start();
             _pktMonProcess.BeginOutputReadLine();
@@ -203,8 +209,7 @@ namespace PacketCapture
                 }
             }
             _processExited = true;       
-            _updateTimer.Stop();
-                      
+            _updateTimer.Stop();                      
         }
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
@@ -226,7 +231,6 @@ namespace PacketCapture
                 OutputDataGrid.Focus();
             }
         }
-
 
         private void PktMonProcess_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
@@ -256,9 +260,20 @@ namespace PacketCapture
                 {
                     _outputData.Add(outputData);
                     Debug.WriteLine("Added to _outputData");
+                    if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
+                    {
+                        _scrollReady = false;
+                        _scrollTimer.Start();
+                        if (OutputDataGrid.Items.Count > 0)
+                        {
+                            var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
+                            OutputDataGrid.ScrollIntoView(lastItem);
+                        }
+                    }
                 });
             }        
             _pktMonProcess.Exited += PktMonProcess_Exited;
+            
         }
 
         private void FilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -295,6 +310,7 @@ namespace PacketCapture
                     {
                         Debug.WriteLine("Matched groups: " + string.Join(", ", match.Groups));
 
+                        outputData.Timestamp = DateTime.Now;
                         outputData.Source = match.Groups["source"].Value;
                         outputData.Destination = match.Groups["destination"].Value;
                         outputData.Ethertype = match.Groups["ethertype"].Value;
@@ -304,7 +320,17 @@ namespace PacketCapture
                         // Add the object to the collection if it matches the filter or if there is no filter
                         if (string.IsNullOrWhiteSpace(FilterTextBox.Text) || outputData.Info.Contains(FilterTextBox.Text))
                         {
-                            _outputData.Add(outputData);
+                            Dispatcher.Invoke(() =>
+                            {
+                                _outputData.Add(outputData);
+
+                                // Scroll to the bottom of the DataGrid
+                                var dataGridScrollViewer = VisualTreeHelper.GetChild(OutputDataGrid, 0) as ScrollViewer;
+                                if (dataGridScrollViewer != null)
+                                {
+                                    dataGridScrollViewer.ScrollToEnd();
+                                }
+                            });
                         }
                     }
                 }
@@ -320,6 +346,7 @@ namespace PacketCapture
                 }
             }
         }
+
         private void AddPortButton_Click(object sender, RoutedEventArgs e)
         {
             int port;
