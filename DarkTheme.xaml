@@ -21,35 +21,6 @@
         <Setter Property="Background" Value="{StaticResource BackgroundColor}"/>
         <Setter Property="BorderBrush" Value="{StaticResource ForegroundColor}"/>
     </Style>
-    <Style TargetType="{x:Type CheckBox}" x:Key="DarkCheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
-        <Setter Property="Foreground" Value="White" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="White" />
-        <Setter Property="Padding" Value="4" />
-        <Setter Property="Margin" Value="4" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <BulletDecorator Background="Transparent">
-                        <BulletDecorator.Bullet>
-                            <Grid Width="13" Height="13" Background="White">
-                                <Path x:Name="CheckMark" Stroke="White" StrokeThickness="2" SnapsToDevicePixels="False"
-                              Data="M 0 5 L 3.5 9 L 8 2" />
-                            </Grid>
-                        </BulletDecorator.Bullet>
-                        <ContentPresenter Margin="4,0,0,0" VerticalAlignment="Center"
-                                  TextElement.Foreground="{TemplateBinding Foreground}"
-                                  RecognizesAccessKey="True" />
-                    </BulletDecorator>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
     <Style TargetType="{x:Type DataGrid}">
         <Setter Property="Foreground" Value="{StaticResource ForegroundColor}"/>
         <Setter Property="Background" Value="{StaticResource BackgroundColor}"/>
@@ -95,12 +66,7 @@
         <Setter Property="Foreground" Value="{StaticResource ForegroundColor}" />
         <Setter Property="Background" Value="{StaticResource BackgroundColor}" />
     </Style>
-    <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="BorderBrush" Value="White"/>
-        <Setter Property="Padding" Value="4"/>
-        <Setter Property="Margin" Value="4"/>
+    <Style TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="White" />
     </Style>
 </ResourceDictionary>

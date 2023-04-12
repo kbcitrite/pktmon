@@ -15,6 +15,7 @@ using Microsoft.Win32;
 using System.Linq;
 using System.Windows.Media;
 using System.Windows.Controls;
+using System.IO;
 
 namespace PacketCapture
 {
@@ -39,7 +40,7 @@ namespace PacketCapture
         private Process _pktMonStopProcess;
         private readonly DispatcherTimer _updateTimer;
         private bool _processExited = false;
-        private readonly System.Timers.Timer _scrollTimer = new System.Timers.Timer(1000);
+        private readonly System.Timers.Timer _scrollTimer = new System.Timers.Timer(700);
         private bool _scrollReady = true;
         public MainWindow()
         {
@@ -55,7 +56,7 @@ namespace PacketCapture
             System.Windows.Data.CollectionViewSource outputDataViewSource = (CollectionViewSource)FindResource("outputDataViewSource");
             outputDataViewSource.Source = _outputData;
 
-            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
             _updateTimer.Tick += UpdateTimer_Tick;
             _updateTimer.Start();
             Closing += MainWindow_Closing;
@@ -98,6 +99,33 @@ namespace PacketCapture
             StartButton.IsEnabled = true;
             IsCapturing = false;
             StopCapture();
+            if(SaveOutput.IsChecked == true)
+            {
+                var saveFileDialog = new SaveFileDialog();
+                saveFileDialog.Filter = "Capture Files (*.pcapng)|*.pcapng|Capture Files (*.*)|*.*";
+                saveFileDialog.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                saveFileDialog.FileName = "output-" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".pcapng"; ;
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    string selectedFilePath = saveFileDialog.FileName;
+                    // Do something with the selected file path  
+                    // Save captured data to file
+                    var convertToPcap = new Process
+                    {
+                        StartInfo = new ProcessStartInfo
+                        {
+                            FileName = "cmd.exe",
+                            Arguments = "/C pktmon pcapng PktMon.etl -o " + selectedFilePath,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        }
+                    };
+                    convertToPcap.Start();
+                    convertToPcap.WaitForExit();
+                    convertToPcap.Dispose();
+                }
+            }
         }
 
         private void StartCapture()
