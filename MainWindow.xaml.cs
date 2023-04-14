@@ -15,11 +15,9 @@ using Microsoft.Win32;
 using System.Linq;
 using System.Windows.Media;
 using System.Windows.Controls;
-using System.IO;
 
 namespace PacketCapture
 {
-    
     public partial class MainWindow : Window
     {
         public static bool IsDarkThemeEnabled()
@@ -31,6 +29,7 @@ namespace PacketCapture
 
             return value == 0;
         }
+        public bool IsAutoScrollEnabled { get; set; } = false;
         public ObservableCollection<int> FilteredPorts { get; set; } = new ObservableCollection<int>();
         private readonly StringBuilder _pktMonProcessOutputBuilder = new StringBuilder();
         private bool IsCapturing = false;
@@ -52,6 +51,7 @@ namespace PacketCapture
             };
             ToggleTheme();
             _outputData = new ObservableCollection<OutputData>();
+            DataContext = this;
             OutputDataGrid.ItemsSource = _outputData;
             System.Windows.Data.CollectionViewSource outputDataViewSource = (CollectionViewSource)FindResource("outputDataViewSource");
             outputDataViewSource.Source = _outputData;
@@ -65,6 +65,10 @@ namespace PacketCapture
         {
             IsCapturing = false;
             StopCapture();
+        }
+        private void MaxEvents_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+        {
+            e.Handled = !int.TryParse(e.Text, out _);
         }
         private void StartButton_Click(object sender, RoutedEventArgs e)
         {
@@ -287,6 +291,10 @@ namespace PacketCapture
                 Dispatcher.Invoke(() =>
                 {
                     _outputData.Add(outputData);
+                    if (_outputData.Count > int.Parse(MaxEvents.Text))
+                    {
+                        _outputData.RemoveAt(0);
+                    }
                     Debug.WriteLine("Added to _outputData");
                     if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
                     {
@@ -350,27 +358,25 @@ namespace PacketCapture
                         {
                             Dispatcher.Invoke(() =>
                             {
+                                // Add the new OutputData object to the list and remove the oldest element if necessary
                                 _outputData.Add(outputData);
-
-                                // Scroll to the bottom of the DataGrid
-                                var dataGridScrollViewer = VisualTreeHelper.GetChild(OutputDataGrid, 0) as ScrollViewer;
-                                if (dataGridScrollViewer != null)
+                                if (_outputData.Count > int.Parse(MaxEvents.Text))
                                 {
-                                    dataGridScrollViewer.ScrollToEnd();
+                                    _outputData.RemoveAt(0);
+                                }
+
+                                // Scroll to the bottom of the DataGrid if auto-scrolling is enabled
+                                if (AutoScrollCheckBox.IsChecked == true)
+                                {
+                                    var dataGridScrollViewer = VisualTreeHelper.GetChild(OutputDataGrid, 0) as ScrollViewer;
+                                    if (dataGridScrollViewer != null)
+                                    {
+                                        dataGridScrollViewer.ScrollToEnd();
+                                    }
                                 }
                             });
                         }
                     }
-                }
-            }
-            else
-            {
-                if (!_processExited)
-                {
-                    _processExited = true;
-                    StartButton.IsEnabled = true;
-                    StopButton.IsEnabled = false;
-                    _updateTimer.Stop();
                 }
             }
         }

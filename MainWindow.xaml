@@ -14,9 +14,11 @@
         </Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal" Margin="1">
             <Button Name="StartButton" Content="Start" Width="50" Click="StartButton_Click" Margin="1"/>
-            <Button Name="StopButton" Content="Stop" Width="50" Click="StopButton_Click" Margin="1"/>
+            <Button Name="StopButton" Content="Stop" Width="50" Click="StopButton_Click" Margin="1" IsEnabled="False"/>
             <Label Name="InfoFilterLabel" Content="Search Info for:" VerticalAlignment="Center"/>
-            <TextBox Name="FilterTextBox" Width="100" Margin="1" TextChanged="FilterTextBox_TextChanged"/>            
+            <TextBox Name="FilterTextBox" Width="100" Margin="1" TextChanged="FilterTextBox_TextChanged"/>
+            <Label Name="MaxEventsLabel" Content="Max Events:" VerticalAlignment="Center"/>
+            <TextBox Name="MaxEvents" Width="56" Margin="1" VerticalContentAlignment="Center" PreviewTextInput="MaxEvents_PreviewTextInput" Text="50000" />
             <CheckBox Name="AutoScrollCheckBox" Content="Auto Scroll" Margin="10 0 0 0" VerticalAlignment="Center" IsChecked="{Binding IsAutoScrollEnabled}" />
             <CheckBox Name="SaveOutput" Content="Save to .pcapng" Margin="10 0 0 0" VerticalAlignment="Center" IsChecked="{Binding IsAutoScrollEnabled}" />
         </StackPanel>
@@ -33,7 +35,7 @@
             <ListBox Name="FilterIPs" Width="158" Margin="1" MaxHeight="200" Height="25" />
         </StackPanel>
         <ScrollViewer Grid.Row="2">
-            <DataGrid x:Name="OutputDataGrid" AutoGenerateColumns="False" ItemsSource="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="1,1,1,1" CanUserAddRows="False">
+            <DataGrid x:Name="OutputDataGrid"  AutoGenerateColumns="False" ItemsSource="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="1,1,1,1" CanUserAddRows="False">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Width="100" />
                     <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="150" />

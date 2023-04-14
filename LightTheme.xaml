@@ -7,29 +7,6 @@
         <Setter Property="Foreground" Value="Black"/>
     </Style>
 
-    <Style TargetType="Button">
-        <Setter Property="Background" Value="#FF007ACC"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Padding" Value="10 5"/>
-        <Setter Property="Margin" Value="10"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="HorizontalAlignment" Value="Center"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}">
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <Style TargetType="ListBox">
         <Setter Property="Background" Value="White"/>
         <Setter Property="Foreground" Value="Black"/>
