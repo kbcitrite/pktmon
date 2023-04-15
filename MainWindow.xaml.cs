@@ -35,6 +35,7 @@ namespace PacketCapture
         private bool IsCapturing = false;
         private ObservableCollection<OutputData> _outputData = new ObservableCollection<OutputData>();
         private readonly Regex outputLineRegex = new Regex(@"(?<source>[A-Fa-f0-9\-]+) > (?<destination>[A-Fa-f0-9\-]+), ethertype (?<ethertype>\w+) \((?<etypecode>0x[A-Fa-f0-9]+)\), length (?<length>\d+): (?<info>.+)");
+        private static readonly Regex infoRegex = new Regex(@"^(?<source>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(?<sourceport>\d+)\s*>\s*(?<destination>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(?<destinationport>\d+): (?<info>.+)$", RegexOptions.Compiled);
         private Process _pktMonProcess;
         private Process _pktMonStopProcess;
         private readonly DispatcherTimer _updateTimer;
@@ -278,40 +279,50 @@ namespace PacketCapture
             if (match.Success)
             {
                 Debug.WriteLine("Matched groups: " + string.Join(", ", match.Groups));
-                var outputData = new OutputData
+                var infoFields = match.Groups["info"].Value.Split(new char[] { ' ', ':' }, StringSplitOptions.RemoveEmptyEntries);
+                if (infoFields[1] == ">")
                 {
-                    Timestamp = DateTime.Now,
-                    Source = match.Groups["source"].Value,
-                    Destination = match.Groups["destination"].Value,
-                    Ethertype = match.Groups["ethertype"].Value,
-                    Length = match.Groups["length"].Value,
-                    Info = match.Groups["info"].Value
-                };
+                    string source = infoFields[0].Split(new char[] { ':' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                    string dest = infoFields[2].Split(new char[] { ':' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                    string sourceIp = source.Split('.')[0] + "." + source.Split('.')[1] + "." + source.Split('.')[2] + "." + source.Split('.')[3];
+                    string sourcePort = source.Split('.')[4];
+                    string destIp = dest.Split('.')[0] + "." + dest.Split('.')[1] + "." + dest.Split('.')[2] + "." + dest.Split('.')[3];
+                    string destPort = dest.Split('.')[4];
+                    var infoText = string.Join(" ", infoFields.Skip(3));
+                    var outputData = new OutputData
+                    {
+                        Timestamp = DateTime.Now,
+                        SourceIP = sourceIp,
+                        SourcePort = sourcePort,
+                        DestIP = destIp,
+                        DestPort = destPort,
+                        Info = infoText
+                    };
 
-                Dispatcher.Invoke(() =>
-                {
-                    _outputData.Add(outputData);
-                    if (_outputData.Count > int.Parse(MaxEvents.Text))
+                    Dispatcher.Invoke(() =>
                     {
-                        _outputData.RemoveAt(0);
-                    }
-                    Debug.WriteLine("Added to _outputData");
-                    if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
-                    {
-                        _scrollReady = false;
-                        _scrollTimer.Start();
-                        if (OutputDataGrid.Items.Count > 0)
+                        _outputData.Add(outputData);
+                        if (_outputData.Count > int.Parse(MaxEvents.Text))
                         {
-                            var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
-                            OutputDataGrid.ScrollIntoView(lastItem);
+                            _outputData.RemoveAt(0);
                         }
-                    }
-                });
+                        Debug.WriteLine("Added to _outputData");
+                        if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
+                        {
+                            _scrollReady = false;
+                            _scrollTimer.Start();
+                            if (OutputDataGrid.Items.Count > 0)
+                            {
+                                var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
+                                OutputDataGrid.ScrollIntoView(lastItem);
+                            }
+                        }
+                    });
+                }
             }        
             _pktMonProcess.Exited += PktMonProcess_Exited;
             
         }
-
         private void FilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
             ApplyFilter();
@@ -347,11 +358,26 @@ namespace PacketCapture
                         Debug.WriteLine("Matched groups: " + string.Join(", ", match.Groups));
 
                         outputData.Timestamp = DateTime.Now;
-                        outputData.Source = match.Groups["source"].Value;
-                        outputData.Destination = match.Groups["destination"].Value;
-                        outputData.Ethertype = match.Groups["ethertype"].Value;
-                        outputData.Length = match.Groups["length"].Value;
-                        outputData.Info = match.Groups["info"].Value;
+                        outputData.SourceIP = match.Groups["sourceip"].Value;
+                        outputData.SourcePort = match.Groups["sourceport"].Value;
+                        outputData.DestIP = match.Groups["destip"].Value;
+                        outputData.DestPort = match.Groups["destport"].Value;                        
+                        var infoString = match.Groups["info"].Value;
+
+                        // Parse the Info field into separate columns
+                        var infoMatch = infoRegex.Match(infoString);
+                        if (infoMatch.Success)
+                        {
+                            outputData.SourceIP = infoMatch.Groups["sourceip"].Value;
+                            outputData.SourcePort = infoMatch.Groups["sourceport"].Value;
+                            outputData.DestIP = infoMatch.Groups["destip"].Value;
+                            outputData.DestPort = infoMatch.Groups["destport"].Value;
+                            outputData.Info = infoMatch.Groups["info"].Value;
+                        }
+                        else
+                        {
+                            outputData.Info = infoString;
+                        }
 
                         // Add the object to the collection if it matches the filter or if there is no filter
                         if (string.IsNullOrWhiteSpace(FilterTextBox.Text) || outputData.Info.Contains(FilterTextBox.Text))
@@ -380,6 +406,7 @@ namespace PacketCapture
                 }
             }
         }
+
 
         private void AddPortButton_Click(object sender, RoutedEventArgs e)
         {
@@ -439,34 +466,34 @@ namespace PacketCapture
             get { return _timestamp; }
             set { _timestamp = value; OnPropertyChanged(); }
         }
-        private string _source;
-        public string Source
+
+        private string _sourceIP;
+        public string SourceIP
         {
-            get { return _source; }
-            set { _source = value; OnPropertyChanged(); }
+            get { return _sourceIP; }
+            set { _sourceIP = value; OnPropertyChanged(); }
         }
 
-        private string _destination;
-        public string Destination
+        private string _sourcePort;
+        public string SourcePort
         {
-            get { return _destination; }
-            set { _destination = value; OnPropertyChanged(); }
+            get { return _sourcePort; }
+            set { _sourcePort = value; OnPropertyChanged(); }
         }
 
-        private string _ethertype;
-        public string Ethertype
+        private string _destIP;
+        public string DestIP
         {
-            get { return _ethertype; }
-            set { _ethertype = value; OnPropertyChanged(); }
+            get { return _destIP; }
+            set { _destIP = value; OnPropertyChanged(); }
         }
 
-        private string _length;
-        public string Length
+        private string _destPort;
+        public string DestPort
         {
-            get { return _length; }
-            set { _length = value; OnPropertyChanged(); }
+            get { return _destPort; }
+            set { _destPort = value; OnPropertyChanged(); }
         }
-
         private string _info;
         public string Info
         {

@@ -34,15 +34,15 @@
             <Button Name="RemoveIpButton" Content="Remove" Click="RemoveIpButton_Click" Margin="1" Width="55" />
             <ListBox Name="FilterIPs" Width="158" Margin="1" MaxHeight="200" Height="25" />
         </StackPanel>
-        <ScrollViewer Grid.Row="2">
-            <DataGrid x:Name="OutputDataGrid"  AutoGenerateColumns="False" ItemsSource="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="1,1,1,1" CanUserAddRows="False">
+        <ScrollViewer Grid.Row="2" CanContentScroll="True" >
+            <DataGrid x:Name="OutputDataGrid" IsReadOnly="True" AutoGenerateColumns="False" ItemsSource="{Binding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" CanUserAddRows="False" >
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Width="100" />
-                    <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="150" />
-                    <DataGridTextColumn Header="Destination" Binding="{Binding Destination}" Width="150" />
-                    <DataGridTextColumn Header="EtherType" Binding="{Binding Ethertype}" Width="100" />
-                    <DataGridTextColumn Header="Length" Binding="{Binding Length}" Width="100" />
-                    <DataGridTextColumn Header="Info" Binding="{Binding Info}" />
+                    <DataGridTextColumn Header="Timestamp" Binding="{Binding Timestamp, StringFormat={}{0:yyyy-MM-dd HH:mm:ss.fff}}" Width="Auto" />
+                    <DataGridTextColumn Header="Source IP" Binding="{Binding SourceIP}" Width="Auto" />
+                    <DataGridTextColumn Header="Source Port" Binding="{Binding SourcePort}" Width="Auto" />
+                    <DataGridTextColumn Header="Dest. IP" Binding="{Binding DestIP}" Width="Auto" />
+                    <DataGridTextColumn Header="Dest. Port" Binding="{Binding DestPort}" Width="Auto" /> 
+                    <DataGridTextColumn Header="Info" Binding="{Binding Info}" Width="Auto" />
                 </DataGrid.Columns>
             </DataGrid>
         </ScrollViewer>
