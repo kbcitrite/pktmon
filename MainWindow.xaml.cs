@@ -13,8 +13,10 @@ using System.Windows.Data;
 using System.Text;
 using Microsoft.Win32;
 using System.Linq;
-using System.Windows.Media;
-using System.Windows.Controls;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
+using System.Threading;
+using System.Collections.Generic;
 
 namespace PacketCapture
 {
@@ -38,13 +40,18 @@ namespace PacketCapture
         private static readonly Regex infoRegex = new Regex(@"^(?<source>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(?<sourceport>\d+)\s*>\s*(?<destination>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(?<destinationport>\d+): (?<info>.+)$", RegexOptions.Compiled);
         private Process _pktMonProcess;
         private Process _pktMonStopProcess;
-        private readonly DispatcherTimer _updateTimer;
         private bool _processExited = false;
         private readonly System.Timers.Timer _scrollTimer = new System.Timers.Timer(700);
         private bool _scrollReady = true;
+        private BlockingCollection<OutputData> _outputDataQueue = new BlockingCollection<OutputData>();
+        private CancellationTokenSource _updateCts;
+        private DispatcherTimer _dispatcherTimer;
+        private BlockingCollection<OutputData> _outputBuffer;
+
         public MainWindow()
         {
             InitializeComponent();
+            ProcessOutputDataQueue();
             _scrollTimer.Elapsed += (s, e) =>
             {
                 _scrollReady = true;
@@ -52,16 +59,57 @@ namespace PacketCapture
             };
             ToggleTheme();
             _outputData = new ObservableCollection<OutputData>();
+            OutputDataGrid.ItemsSource = _outputData;
+            _outputBuffer = new BlockingCollection<OutputData>();
             DataContext = this;
             OutputDataGrid.ItemsSource = _outputData;
             System.Windows.Data.CollectionViewSource outputDataViewSource = (CollectionViewSource)FindResource("outputDataViewSource");
             outputDataViewSource.Source = _outputData;
-
-            _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
-            _updateTimer.Tick += UpdateTimer_Tick;
-            _updateTimer.Start();
             Closing += MainWindow_Closing;
         }
+        private CancellationTokenSource _cts;
+        private async void ProcessOutputDataQueue()
+        {
+            _cts = new CancellationTokenSource();
+
+            await Task.Run(async () =>
+            {
+                while (!_cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var outputData = _outputDataQueue.Take(_cts.Token);
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            _outputData.Add(outputData);
+                            if (_outputData.Count > int.Parse(MaxEvents.Text))
+                            {
+                                _outputData.RemoveAt(0);
+                            }
+                            Debug.WriteLine("Added to _outputData");
+                            if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
+                            {
+                                _scrollReady = false;
+                                _scrollTimer.Start();
+                                if (OutputDataGrid.Items.Count > 0)
+                                {
+                                    var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
+                                    OutputDataGrid.ScrollIntoView(lastItem);
+                                }
+                            }
+                        });
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Task was canceled, exit the loop
+                        break;
+                    }
+                }
+            });
+        }
+        
+
         private void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             IsCapturing = false;
@@ -100,9 +148,7 @@ namespace PacketCapture
         }
         private void StopButton_Click(object sender, RoutedEventArgs e)
         {
-            StopButton.IsEnabled = false;
-            StartButton.IsEnabled = true;
-            IsCapturing = false;
+            StopButton.IsEnabled = false;            
             StopCapture();
             if(SaveOutput.IsChecked == true)
             {
@@ -131,11 +177,27 @@ namespace PacketCapture
                     convertToPcap.Dispose();
                 }
             }
+            StartButton.IsEnabled = true;
+            IsCapturing = false;
+            RealTimeCheckbox.IsEnabled = true;
         }
 
         private void StartCapture()
         {
-            StopCapture();
+            RealTimeCheckbox.IsEnabled = false;
+            _pktMonStopProcess = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/C pktmon stop",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            _pktMonStopProcess.Start();
+            _pktMonStopProcess.Dispose();
             var clearFilterProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -196,24 +258,41 @@ namespace PacketCapture
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = "/C pktmon start --etw --log-mode real-time",
                     RedirectStandardOutput = true,
                     RedirectStandardInput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
-            _pktMonProcess.OutputDataReceived += PktMonProcess_OutputDataReceived;
+            if (RealTimeCheckbox.IsChecked == true)
+            {
+                _pktMonProcess.StartInfo.Arguments = "/C pktmon start --etw --log-mode real-time";
+            }
+            else
+            {
+                _pktMonProcess.StartInfo.Arguments = "/C pktmon start --etw";
+            }
             _pktMonProcess.Start();
-            _pktMonProcess.BeginOutputReadLine();
+            if (RealTimeCheckbox.IsChecked == true)
+            {
+                _pktMonProcess.OutputDataReceived += PktMonProcess_OutputDataReceived;                
+                _pktMonProcess.BeginOutputReadLine();
+                // Initialize the CancellationTokenSource and DispatcherTimer
+                _updateCts = new CancellationTokenSource();
+                _dispatcherTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(50) // Adjust the interval for better UI responsiveness
+                };
+                _dispatcherTimer.Tick += DispatcherTimer_Tick;
+                _dispatcherTimer.Start();
+            }
         }
-
         private void PktMonProcess_Exited(object sender, EventArgs e)
         {
             Debug.WriteLine("Process exited");
             _processExited = true;
         }
-        private void StopCapture()
+        private async void StopCapture()
         {
             _pktMonStopProcess = new Process
             {
@@ -225,25 +304,50 @@ namespace PacketCapture
                     CreateNoWindow = true
                 }
             };
-
-            _pktMonStopProcess.Start();
-            _pktMonStopProcess.Dispose();
-            if (_pktMonProcess != null && !_pktMonProcess.HasExited)
+            if (RealTimeCheckbox.IsChecked == true)
             {
-                _pktMonProcess.Exited -= PktMonProcess_Exited;
+                _pktMonStopProcess.Start();
+                _pktMonStopProcess.Dispose();
+                if (_pktMonProcess != null && !_pktMonProcess.HasExited)
+                {
+                    _pktMonProcess.Exited -= PktMonProcess_Exited;
 
-                try
-                {
-                    _pktMonProcess.Kill();
+                    try
+                    {
+                        _pktMonProcess.Kill();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error stopping packet capture process: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+                _processExited = true;
+            
+                // Stop update task logic
+                _updateCts.Cancel();
+                _dispatcherTimer.Stop();
+                _dispatcherTimer = null;
+
+                // Process the remaining items in the _outputBuffer as batches
+                var remainingItems = new List<OutputData>();
+                while (_outputBuffer.TryTake(out var outputData))
                 {
-                    Debug.WriteLine($"Error stopping packet capture process: {ex.Message}");
+                    remainingItems.Add(outputData);
+                    if (remainingItems.Count >= 100) // Adjust the batch size as needed
+                    {
+                        await BatchUpdateDataGrid(remainingItems);
+                        remainingItems.Clear();
+                    }
+                }
+
+                // Process any remaining items that didn't fill the last batch
+                if (remainingItems.Count > 0)
+                {
+                    await BatchUpdateDataGrid(remainingItems);
                 }
             }
-            _processExited = true;       
-            _updateTimer.Stop();                      
         }
+
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             // Set up the data source for the data grid
@@ -263,8 +367,7 @@ namespace PacketCapture
                 OutputDataGrid.SelectedItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
                 OutputDataGrid.Focus();
             }
-        }
-
+        }        
         private void PktMonProcess_OutputDataReceived(object sender, DataReceivedEventArgs e)
         {
             if (!IsCapturing) return; // stop processing output if not capturing
@@ -273,140 +376,41 @@ namespace PacketCapture
                 _pktMonProcess.Exited -= PktMonProcess_Exited;
                 return;
             }
-            Debug.WriteLine("Received data: " + e.Data);
-
             var match = outputLineRegex.Match(e.Data);
             if (match.Success)
-            {
-                Debug.WriteLine("Matched groups: " + string.Join(", ", match.Groups));
-                var infoFields = match.Groups["info"].Value.Split(new char[] { ' ', ':' }, StringSplitOptions.RemoveEmptyEntries);
-                if (infoFields[1] == ">")
+            {                
+                Task.Run(() =>
                 {
-                    string source = infoFields[0].Split(new char[] { ':' }, StringSplitOptions.RemoveEmptyEntries)[0];
-                    string dest = infoFields[2].Split(new char[] { ':' }, StringSplitOptions.RemoveEmptyEntries)[0];
-                    string sourceIp = source.Split('.')[0] + "." + source.Split('.')[1] + "." + source.Split('.')[2] + "." + source.Split('.')[3];
-                    string sourcePort = source.Split('.')[4];
-                    string destIp = dest.Split('.')[0] + "." + dest.Split('.')[1] + "." + dest.Split('.')[2] + "." + dest.Split('.')[3];
-                    string destPort = dest.Split('.')[4];
-                    var infoText = string.Join(" ", infoFields.Skip(3));
+                    Debug.WriteLine("Received data: " + e.Data);
+                    MessageParser parser = new MessageParser();
+                    Dictionary<string, string> result = parser.Parse(e.Data);
                     var outputData = new OutputData
                     {
                         Timestamp = DateTime.Now,
-                        SourceIP = sourceIp,
-                        SourcePort = sourcePort,
-                        DestIP = destIp,
-                        DestPort = destPort,
-                        Info = infoText
+                        SourceIP = result["SourceIP"],
+                        SourcePort = result["SourcePort"],
+                        DestIP = result["DestIP"],
+                        DestPort = result["DestPort"],
+                        Info = result["Info"]
                     };
 
-                    Dispatcher.Invoke(() =>
-                    {
-                        _outputData.Add(outputData);
-                        if (_outputData.Count > int.Parse(MaxEvents.Text))
-                        {
-                            _outputData.RemoveAt(0);
-                        }
-                        Debug.WriteLine("Added to _outputData");
-                        if (_scrollReady && AutoScrollCheckBox.IsChecked == true)
-                        {
-                            _scrollReady = false;
-                            _scrollTimer.Start();
-                            if (OutputDataGrid.Items.Count > 0)
-                            {
-                                var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
-                                OutputDataGrid.ScrollIntoView(lastItem);
-                            }
-                        }
-                    });
-                }
-            }        
-            _pktMonProcess.Exited += PktMonProcess_Exited;
-            
-        }
-        private void FilterTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            ApplyFilter();
-        }
-        private void ApplyFilter()
-        {
-            var filteredData = _outputData
-                .Where(data => string.IsNullOrEmpty(FilterTextBox.Text) || data.Info.Contains(FilterTextBox.Text, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+                    _outputDataQueue.Add(outputData);
+                    
 
-            OutputDataGrid.ItemsSource = filteredData;
-
-            Debug.WriteLine("Items in ItemsSource: " + OutputDataGrid.Items.Count);
-        }
-
-        private void UpdateTimer_Tick(object sender, EventArgs e)
-        {
-            if (_pktMonProcess != null && !_pktMonProcess.HasExited)
-            {
-                var data = _pktMonProcessOutputBuilder.ToString();
-
-                if (!string.IsNullOrWhiteSpace(data))
+                }).ContinueWith(t =>
                 {
-                    _pktMonProcessOutputBuilder.Clear();
-                    Debug.WriteLine(data);
-
-                    // Create a new OutputData object
-                    var outputData = new OutputData();
-
-                    var match = outputLineRegex.Match(data);
-                    if (match.Success)
+                    if (t.IsFaulted)
                     {
-                        Debug.WriteLine("Matched groups: " + string.Join(", ", match.Groups));
-
-                        outputData.Timestamp = DateTime.Now;
-                        outputData.SourceIP = match.Groups["sourceip"].Value;
-                        outputData.SourcePort = match.Groups["sourceport"].Value;
-                        outputData.DestIP = match.Groups["destip"].Value;
-                        outputData.DestPort = match.Groups["destport"].Value;                        
-                        var infoString = match.Groups["info"].Value;
-
-                        // Parse the Info field into separate columns
-                        var infoMatch = infoRegex.Match(infoString);
-                        if (infoMatch.Success)
-                        {
-                            outputData.SourceIP = infoMatch.Groups["sourceip"].Value;
-                            outputData.SourcePort = infoMatch.Groups["sourceport"].Value;
-                            outputData.DestIP = infoMatch.Groups["destip"].Value;
-                            outputData.DestPort = infoMatch.Groups["destport"].Value;
-                            outputData.Info = infoMatch.Groups["info"].Value;
-                        }
-                        else
-                        {
-                            outputData.Info = infoString;
-                        }
-
-                        // Add the object to the collection if it matches the filter or if there is no filter
-                        if (string.IsNullOrWhiteSpace(FilterTextBox.Text) || outputData.Info.Contains(FilterTextBox.Text))
-                        {
-                            Dispatcher.Invoke(() =>
-                            {
-                                // Add the new OutputData object to the list and remove the oldest element if necessary
-                                _outputData.Add(outputData);
-                                if (_outputData.Count > int.Parse(MaxEvents.Text))
-                                {
-                                    _outputData.RemoveAt(0);
-                                }
-
-                                // Scroll to the bottom of the DataGrid if auto-scrolling is enabled
-                                if (AutoScrollCheckBox.IsChecked == true)
-                                {
-                                    var dataGridScrollViewer = VisualTreeHelper.GetChild(OutputDataGrid, 0) as ScrollViewer;
-                                    if (dataGridScrollViewer != null)
-                                    {
-                                        dataGridScrollViewer.ScrollToEnd();
-                                    }
-                                }
-                            });
-                        }
+                        Debug.WriteLine("Error in background task: " + t.Exception);
                     }
-                }
+                    Dispatcher.Invoke(() => ReattachExitedHandler());
+                });
             }
         }
-
+        private void ReattachExitedHandler()
+        {
+            _pktMonProcess.Exited += PktMonProcess_Exited;
+        }
 
         private void AddPortButton_Click(object sender, RoutedEventArgs e)
         {
@@ -453,6 +457,146 @@ namespace PacketCapture
             {
                 FilterIPs.Items.Remove(FilterIPs.SelectedItem);
             }
+        }
+        public class MessageParser
+        {
+            public Dictionary<string, string> Parse(string message)
+            {
+                Dictionary<string, string> result = new Dictionary<string, string>();
+                string[] fields = message.Split(',');
+                // parse source and destination MAC
+                string[] MacValues = fields[0].Split('>');
+                result["SourceMac"] = MacValues[0].Trim();
+                result["DestMac"] = MacValues[1].Trim();
+                // parse ethertype
+                string[] ethType = fields[1].Trim().Split(' ');
+                result["ethertype"] = ethType[1];
+                string[] srcIPPort;
+                string[] dstIPPort;
+                string[] sourcedest;
+                string[] InfoFields;
+                if (ethType[1] == "IPv6")
+                {
+                    string[] ipfields = fields[2].Split(": ");
+                    result["length"] = ipfields[0];
+                    sourcedest = ipfields[1].Split('>');
+                    result["Info"] = ipfields[2];
+                    srcIPPort = sourcedest[0].Split('.');
+                    dstIPPort = sourcedest[1].Split('.');
+                    result["SourceIP"] = srcIPPort[0];
+                    result["DestIP"] = dstIPPort[0];
+                    try
+                    {
+                        result["SourcePort"] = srcIPPort[1];
+                    }
+                    catch
+                    {
+                        result["SourcePort"] = "N/A";
+                    }
+                    try
+                    {
+                        result["DestPort"] = dstIPPort[1];
+                    }
+                    catch
+                    {
+                        result["DestPort"] = "N/A";
+                    }
+                }
+                else if (ethType[1] == "ARP")
+                {
+                    string[] ipfields = fields[2].Split(": ");
+                    result["length"] = ipfields[0];
+                    result["SourceIP"] = ipfields[1].Split(' ')[4];
+                    result["SourcePort"] = "N/A";
+                    result["DestIP"] = ipfields[1].Split(' ')[2];
+                    result["DestPort"] = "N/A";
+                    result["Info"] = ipfields[1];
+                }
+                else
+                {
+                    // parse length source IP and port, destination IP and port
+                    string[] ipfields = fields[2].Split(':');
+                    result["length"] = ipfields[0].Trim().Split(' ')[1];
+                    sourcedest = ipfields[1].Split('>');
+                    srcIPPort = sourcedest[0].Split('.');
+                    result["SourceIP"] = srcIPPort[0] + "." + srcIPPort[1] + "." + srcIPPort[2] + "." + srcIPPort[3];
+                    try
+                    {
+                        result["SourcePort"] = srcIPPort[4];
+                    }
+                    catch
+                    {
+                        result["SourcePort"] = "N/A";
+                    }
+                    dstIPPort = sourcedest[1].Split('.');
+                    result["DestIP"] = dstIPPort[0] + "." + dstIPPort[1] + "." + dstIPPort[2] + "." + dstIPPort[3];
+                    try
+                    {
+                        result["DestPort"] = dstIPPort[4];
+                    }
+                    catch
+                    {
+                        result["DestPort"] = "N/A";
+                    }
+                    // parse info
+                    InfoFields = message.Trim().Split(':');
+                    result["Info"] = string.Join(' ', InfoFields.Skip(2));
+                }
+                return result;
+            }
+        }
+        private async Task BatchUpdateDataGrid(IEnumerable<OutputData> outputDataBatch)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                foreach (var outputData in outputDataBatch)
+                {
+                    _outputData.Add(outputData);
+                    if (_outputData.Count > int.Parse(MaxEvents.Text))
+                    {
+                        _outputData.RemoveAt(0);
+                    }
+                }
+
+                if (OutputDataGrid.Items.Count > 0)
+                {
+                    var lastItem = OutputDataGrid.Items[OutputDataGrid.Items.Count - 1];
+                    OutputDataGrid.ScrollIntoView(lastItem);
+                }
+            });
+        }
+        private async void DispatcherTimer_Tick(object sender, EventArgs e)
+        {
+            var outputDataBatch = new List<OutputData>();
+            while (_outputBuffer.TryTake(out var outputData, 0, _updateCts.Token))
+            {
+                outputDataBatch.Add(outputData);
+                if (outputDataBatch.Count >= 50) // Adjust the batch size as needed
+                {
+                    await BatchUpdateDataGrid(outputDataBatch);
+                    outputDataBatch.Clear();
+                }
+            }
+
+            if (outputDataBatch.Count > 0)
+            {
+                await BatchUpdateDataGrid(outputDataBatch);
+            }
+        }
+
+        private void RealTimeCheckbox_Checked(object sender, RoutedEventArgs e)
+        {
+            MaxEventsLabel.IsEnabled = true;
+            MaxEvents.IsEnabled = true;
+            OutputDataGrid.IsEnabled = true;
+            ScrollViewer.IsEnabled = true;
+        }
+        private void RealTimeCheckbox_Unchecked(object sender, RoutedEventArgs e)
+        {
+            MaxEventsLabel.IsEnabled = false;
+            MaxEvents.IsEnabled = false;
+            OutputDataGrid.IsEnabled = false;
+            ScrollViewer.IsEnabled = false;
         }
     }
 
